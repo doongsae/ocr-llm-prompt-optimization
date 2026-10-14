@@ -33,7 +33,7 @@ repository URL; a GitHub profile URL alone is not a push destination.
 
 ```bash
 git init -b main
-git add README.md config.json .gitignore .env.example requirements.txt pipeline analysis ocr docs tools reference_results
+git add README.md config.example.json .gitignore requirements.txt pipeline analysis ocr docs tools reference_results
 git status --short
 git diff --cached --stat
 git -c core.whitespace=-blank-at-eof,cr-at-eol diff --cached --check
@@ -43,8 +43,9 @@ git remote add origin <YOUR_REPOSITORY_URL>
 git push -u origin main
 ```
 
-Both `.gitignore` and the explicit `git add` list leave historical `archive/`
-out of the first commit. If you decide to publish it, review the history and
+Both `.gitignore` and the explicit `git add` list exclude the credential-bearing
+local `config.json` and historical `archive/`. If you decide to publish the
+archive, review the history and
 upstream licenses, then remove that ignore entry and stage it separately. Do not use
 `git add -f` for ignored secrets or generated outputs. Git LFS is not a substitute
 for dataset redistribution permission or removing an exposed API key.

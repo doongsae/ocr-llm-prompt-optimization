@@ -1,0 +1,8 @@
+{
+  "openai_api_key": "",
+  "data_root": "datasets",
+  "data_manifest": "data/frozen_rows.csv.gz",
+  "seed": 42,
+  "gepa_error_ratio": 0.75,
+  "bootstrap_error_ratio": 0.60
+}

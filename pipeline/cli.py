@@ -3,7 +3,6 @@
 import argparse
 import importlib.metadata
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -28,7 +27,7 @@ def preflight():
         raise ValueError(f"dependency versions changed: {versions}")
     report = {"status": "passed", "checked_at_utc": now(), "versions": versions,
               "data": audit_data(), "provenance": fingerprint(),
-              "api_key_present": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
+              "api_key_present": bool(config.openai_api_key()),
               "api_request_performed": False,
               "runtime_contract": verify_program(fresh_program(), load_scope_examples("group", "trba", "common")[0])}
     write_json(config.HERE / "status" / "preflight.json", report)
@@ -60,7 +59,7 @@ def main():
         subparser.add_argument("--model", choices=config.MODELS)
         subparser.add_argument("--group", choices=config.GROUPS)
     prepare = commands.add_parser("prepare", help="seed split, selected-image OCR, and frozen manifest")
-    prepare.add_argument("--data-root", type=Path, required=True)
+    prepare.add_argument("--data-root", type=Path, default=config.DATA_ROOT)
     prepare.add_argument("--ocr-python", default=sys.executable)
     prepare.add_argument("--output-dir", type=Path, default=config.DATA_MANIFEST.parent)
     prepare.add_argument("--step", choices=["split", "ocr", "freeze", "all"], default="all")

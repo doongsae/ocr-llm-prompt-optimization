@@ -37,7 +37,7 @@ and prompts retain their original content.
 ```text
 python -m pipeline
   cli.main
-    prepare command -> ocr/prepare.py [OCR environment; no API]
+    prepare command -> ocr/prepare.py [active or optional OCR environment; no API]
       LMDB labels -> seed split -> selected-image OCR -> frozen_rows.csv.gz
     cli.preflight [training/evaluation commands]
     matching API-smoke fingerprint check
@@ -68,8 +68,9 @@ fingerprint is removed; split, output, demo, program-hash, and freeze checks rem
 `archive/` remains 933 byte-identical original research files. It is a local
 historical record, not a cleaned collection of 933 supported implementations.
 No archived abandoned optimizer is imported by the active package. OCR
-preparation is connected through the existing CLI but runs in a separate OCR
-environment. It exports the same manifest schema consumed by `data.py`.
+preparation is connected through the existing CLI and can use the active Python
+environment or an optional separate OCR environment. It exports the same
+manifest schema consumed by `data.py`.
 OCR-specific image preprocessing is kept in the two backend scripts, not
 mixed into GEPA/Bootstrap. Historical analysis remains a read-only utility.
 

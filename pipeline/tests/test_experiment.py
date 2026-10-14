@@ -157,7 +157,8 @@ class TransportTests(unittest.TestCase):
             LunaLM("student", 32, 0)(prompt="SPED")
 
     def test_missing_key_stops_before_request(self):
-        with patch.dict(os.environ, {}, clear=True), self.assertRaises(RuntimeError):
+        with patch.dict(config.USER_CONFIG, {"openai_api_key": ""}), \
+                patch.dict(os.environ, {}, clear=True), self.assertRaises(RuntimeError):
             openai_lm.require_key()
 
 

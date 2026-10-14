@@ -17,8 +17,9 @@ and sampling functions while removing unused local-server settings and helpers.
 `contracts.py` owns only data/program validation, rather than re-exporting
 loaders, storage functions, and the factory from other modules.
 
-`config.py` resolves the manifest through `OCR_DATA_MANIFEST` or a repository
-relative default. `artifacts.py` hashes the current package modules instead of
+`config.py` resolves the manifest through `OCR_DATA_MANIFEST`, local
+`config.json`, or a repository-relative default. `artifacts.py` hashes the
+current package modules instead of
 historical module paths. The old runner is organized into command/check,
 training/optimization, evaluation, and provenance modules. Execution is now
 `python -m pipeline`, with ordinary relative imports and no runtime path edits.

@@ -1,7 +1,6 @@
 """Official OpenAI SDK transport behind DSPy's existing LM interface."""
 
 import json
-import os
 import threading
 import time
 from functools import lru_cache
@@ -9,7 +8,7 @@ from functools import lru_cache
 import dspy
 from openai import OpenAI
 
-from .config import API_BASE, MODEL
+from .config import API_BASE, MODEL, openai_api_key
 from .json_adapter import OCRJSONAdapter
 
 CORRECTION_RESPONSE_FORMAT = {
@@ -31,15 +30,14 @@ _lock = threading.Lock()
 
 
 def require_key():
-    if not os.environ.get("OPENAI_API_KEY", "").strip():
-        raise RuntimeError("OPENAI_API_KEY is missing. Set it in the launch environment, not in source files.")
+    if not openai_api_key():
+        raise RuntimeError("API key is missing. Set openai_api_key in the Git-ignored config.json before api-smoke/all.")
 
 
 @lru_cache(maxsize=1)
 def sdk_client():
-    if not os.environ.get("OPENAI_API_KEY", "").strip():
-        raise RuntimeError("OPENAI_API_KEY is missing; no API request was made")
-    return OpenAI(base_url=API_BASE, timeout=120.0, max_retries=2)
+    require_key()
+    return OpenAI(api_key=openai_api_key(), base_url=API_BASE, timeout=120.0, max_retries=2)
 
 
 def reset_usage():

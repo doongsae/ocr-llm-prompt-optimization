@@ -76,6 +76,22 @@ bytes and modification times without any OCR process being launched. The
 Default-setting snapshot and native optimizer workflow comparisons still pass;
 no paid API requests were made.
 
+## Configuration and Automatic Assets
+
+The later setup simplification replaces `.env.example` with an empty-key
+`config.example.json`. The actual `config.json` is Git-ignored; API keys are
+passed directly to the SDK, not recorded in experiment settings or artifacts.
+SVTRv2 source, inference YAML and the official U14M-Filter checkpoint are now
+resolved automatically. The downloaded checkpoint SHA-256 matches the existing
+experiment; downloads and cache reuse were exercised directly.
+
+All 89 unit tests pass with the private historical manifest. Historical
+35,274-row/24-scope contracts and native mocked GEPA/Bootstrap request sequences
+still match. A new CPU check runs all six recognizers on the same 117 images
+without upstream model/config/checkpoint arguments. All six prediction CSVs
+(702 rows) and the split CSV are byte-identical to the earlier manual-path
+check. Preflight passes for 24 scopes and 90 cells. No paid API was called.
+
 ## Rechecking
 
 ```bash
@@ -94,8 +110,9 @@ mocked optimizer workflow comparison. These checks do not need an API key.
 Passing offline checks does not establish bit-identical future LLM generations,
 independent test generalization, absence of OCR pretraining overlap, dataset
 redistribution permission, or full end-to-end OCR environment reproducibility.
-The actual Git index was not checked because this directory is not yet a Git
-repository. The index-inspection utility is covered by an offline fixture test;
-run `python tools/check_publication.py --staged` after the first real staging.
+The initial snapshot predated Git initialization. The first upload's actual
+Git index passed inspection; rerun `python tools/check_publication.py --staged`
+before each upload. Local `config.json` is rejected if accidentally staged,
+and the published config template must have an empty API key.
 Credential pattern checks do not replace manual review. License decisions and
 upstream attribution review remain necessary before public redistribution.

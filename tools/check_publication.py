@@ -33,6 +33,8 @@ def files(staged):
             directories[:] = sorted(name for name in directories if name not in EXCLUDED_DIRS)
             for name in sorted(names):
                 path = Path(parent) / name
+                if path == ROOT / "config.json":
+                    continue
                 if path.name == "PUBLICATION_CHECK.json":
                     continue
                 yield path.relative_to(ROOT).as_posix(), path.read_bytes
@@ -41,7 +43,7 @@ def files(staged):
 def inspect(name, content):
     path = Path(name)
     failures = []
-    if path.suffix in FORBIDDEN_SUFFIXES or (path.name.startswith(".env") and path.name != ".env.example"):
+    if name == "config.json" or path.suffix in FORBIDDEN_SUFFIXES or path.name.startswith(".env"):
         return ["forbidden secret/data/binary filename"]
     if any(part in EXCLUDED_DIRS for part in path.parts):
         return ["generated/private directory is staged"]
@@ -56,6 +58,8 @@ def inspect(name, content):
         return failures + ["unexpected binary file"]
     if SECRET.search(text):
         failures.append("potential credential detected; value suppressed")
+    if name == "config.example.json" and json.loads(text).get("openai_api_key") != "":
+        failures.append("example config must contain an empty API key")
     if path.suffix == ".py" and path.parts[0] != "archive":
         try:
             ast.parse(text, filename=name)

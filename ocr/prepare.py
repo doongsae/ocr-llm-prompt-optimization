@@ -9,13 +9,23 @@ import hashlib
 import json
 import os
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import unicodedata
+import zipfile
 from collections import Counter
 from pathlib import Path
+from urllib.request import urlopen
+
+ROOT = Path(__file__).resolve().parents[1]
+OPENOCR_COMMIT = "45bfc0cc791c055739872e7255fe032cac1abe9c"
+OPENOCR_ARCHIVE_SHA256 = "b9217f9cbdaab7589bda9d653cb1461c919a027e308b2d062d062c8ca4ea407f"
+SVTR_CHECKPOINT_ID = "1P56B_PVYBF649zUqQFShuAZC1XuNmUcL"
+SVTR_CHECKPOINT_SHA256 = "b65dd4675ef061a116390ba1590f538b69ab18795a55fd30a14bd98af1338f49"
+SVTR_CONFIG_PATH = "configs/rec/svtrv2/svtrv2_smtr_gtc_rctc_infer.yml"
 
 DATASET_PATHS = {
     "IIIT5k": "test/IIIT5k", "SVT": "test/SVT", "IC13_857": "test/IC13_857",
@@ -255,6 +265,53 @@ def reuse_manifest(path):
     return {"status": "reused", "manifest": str(path), "rows": rows, "manifest_sha256": file_hash(path)}
 
 
+def download_asset(url, destination, expected_sha256, drive=False):
+    if destination.is_file():
+        if file_hash(destination) != expected_sha256:
+            raise ValueError(f"cached OCR asset hash mismatch: {destination}")
+        return destination
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    print(f"[download] {destination.name}", flush=True)
+    with tempfile.TemporaryDirectory(dir=destination.parent) as directory:
+        temporary = Path(directory) / destination.name
+        if drive:
+            import gdown
+
+            if not gdown.download(id=url, output=str(temporary), quiet=False, use_cookies=False):
+                raise RuntimeError("official SVTRv2-B checkpoint download failed")
+        else:
+            with urlopen(url, timeout=120) as response, temporary.open("wb") as handle:
+                shutil.copyfileobj(response, handle)
+        if file_hash(temporary) != expected_sha256:
+            raise ValueError(f"downloaded OCR asset hash mismatch: {destination.name}")
+        os.replace(temporary, destination)
+    return destination
+
+
+def resolve_svtr_assets(args):
+    cache = ROOT / ".cache" / "ocr"
+    root = getattr(args, "openocr_root", None)
+    if root is None:
+        root = cache / f"OpenOCR-{OPENOCR_COMMIT}"
+        if not root.exists():
+            archive = download_asset(f"https://codeload.github.com/Topdu/OpenOCR/zip/{OPENOCR_COMMIT}",
+                                     cache / f"OpenOCR-{OPENOCR_COMMIT}.zip", OPENOCR_ARCHIVE_SHA256)
+            with tempfile.TemporaryDirectory(dir=cache) as directory:
+                with zipfile.ZipFile(archive) as source:
+                    source.extractall(directory)
+                os.replace(Path(directory) / root.name, root)
+    config = getattr(args, "svtr_config", None) or root / SVTR_CONFIG_PATH
+    if not (root / "openrec").is_dir() or not config.is_file():
+        raise FileNotFoundError("OpenOCR source or SVTRv2 inference config is missing")
+    checkpoint = getattr(args, "svtr_checkpoint", None)
+    if checkpoint is None:
+        checkpoint = download_asset(SVTR_CHECKPOINT_ID, cache / "svtrv2-b-u14m-filter.pth",
+                                    SVTR_CHECKPOINT_SHA256, drive=True)
+    if not checkpoint.is_file():
+        raise FileNotFoundError("SVTRv2 checkpoint is missing")
+    args.openocr_root, args.svtr_config, args.svtr_checkpoint = root, config, checkpoint
+
+
 def run_ocr(args):
     selected = read_selection(args.output_dir / "selection.csv")
     pending = []
@@ -264,11 +321,8 @@ def run_ocr(args):
             print(f"[reuse] OCR: {model}", flush=True)
         else:
             pending.append(model)
-    if "svtrv2" in pending and not all((args.openocr_root, args.svtr_config, args.svtr_checkpoint)):
-        raise ValueError("SVTRv2 requires --openocr-root, --svtr-config and --svtr-checkpoint")
     if "svtrv2" in pending:
-        if not (args.openocr_root / "openrec").is_dir() or not args.svtr_config.is_file() or not args.svtr_checkpoint.is_file():
-            raise FileNotFoundError("OpenOCR checkout, SVTRv2 config or checkpoint is missing; OCR has not started")
+        resolve_svtr_assets(args)
     directory = Path(__file__).resolve().parent
     for model in pending:
         command = [sys.executable, str(directory / ("eval_svtrv2.py" if model == "svtrv2" else "eval_parseq_selected.py")),
@@ -318,14 +372,18 @@ def freeze_manifest(args):
 
 
 def main():
+    config_path = ROOT / "config.json"
+    defaults = json.loads((config_path if config_path.is_file() else ROOT / "config.example.json").read_text(encoding="utf-8"))
+    data_root = Path(defaults.get("data_root", "datasets")).expanduser()
+    if not data_root.is_absolute():
+        data_root = ROOT / data_root
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["split", "ocr", "freeze", "all"])
-    parser.add_argument("--data-root", type=Path, required=True)
+    parser.add_argument("--data-root", type=Path, default=data_root)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--datasets", nargs="+", choices=DATASET_PATHS, default=list(DATASET_PATHS))
     parser.add_argument("--models", nargs="+", choices=MODELS, default=list(MODELS))
-    defaults = json.loads((Path(__file__).resolve().parents[1] / "config.json").read_text(encoding="utf-8"))
     parser.add_argument("--seed", type=int, default=defaults["seed"])
     parser.add_argument("--train-target", type=int, default=500)
     parser.add_argument("--val-target", type=int, default=500)

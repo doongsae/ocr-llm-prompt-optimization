@@ -10,37 +10,42 @@ assembly. `eval_parseq_selected.py` handles the five PARSeq-distributed models;
 `eval_svtrv2.py` handles the official OpenOCR model. No recognizer is trained.
 The old full-benchmark exporter is not needed by this flow.
 
-Install the upstream OCR dependencies in an OCR environment (torch,
-torchvision, timm 0.9.16, pytorch-lightning, lmdb, numpy, Pillow and PyYAML).
-Keep this separate from the pinned DSPy environment. Use official
-[PARSeq](https://github.com/baudm/parseq) and
-[OpenOCR](https://github.com/Topdu/OpenOCR) code and the existing pretrained
-weights. Dataset layout and checkpoint sources are in
+Install both `requirements.txt` and `ocr/requirements.txt` from the repository
+root, as shown in the main README. A separate OCR environment is optional,
+not required. Official [PARSeq](https://github.com/baudm/parseq) and
+[OpenOCR](https://github.com/Topdu/OpenOCR) code and pretrained weights are
+downloaded automatically; no OCR training is performed.
+Dataset layout and checkpoint sources are in
 [Data Protocol](../docs/DATA_PROTOCOL.md). Datasets and weights are not bundled.
 
 ## Execution
 
 Run from the repository root. The default manifest path is
-`data/frozen_rows.csv.gz`; the same `OCR_DATA_MANIFEST` setting controls both
-preparation and subsequent prompt training.
+`data/frozen_rows.csv.gz`. Copy `config.example.json` to the Git-ignored
+`config.json` and set `data_root` to the downloaded benchmark directory.
+The `data_manifest` setting controls both preparation and prompt training;
+configure `openai_api_key` before the paid `api-smoke` and `all` stages.
 
 ```bash
-python -m pipeline prepare \
-  --ocr-python <OCR_ENV_PYTHON> \
-  --data-root <BENCHMARK_DIRECTORY> \
-  --openocr-root <OPENOCR_CHECKOUT> \
-  --svtr-config <SVTRV2_INFER_YAML> \
-  --svtr-checkpoint <SVTRV2_BEST_PTH> \
-  --device cuda:0
+python -m pipeline prepare
 
 python -m pipeline preflight
 python -m pipeline api-smoke
 python -m pipeline all
 ```
 
-Only `api-smoke` and `all` use a paid LLM API. PARSeq code/weights may be
-downloaded by torch.hub if they are not cached; `--parseq-root` selects an
-existing local checkout. OpenOCR/config/checkpoint paths must exist locally.
+Only `api-smoke` and `all` in this sequence use a paid LLM API. PARSeq code and
+Real9 weights use the standard torch.hub cache. SVTRv2 uses OpenOCR commit
+`45bfc0cc791c055739872e7255fe032cac1abe9c`, its official CTC inference YAML,
+and the [official SVTRv2-B U14M-Filter weights](https://github.com/Topdu/OpenOCR/blob/45bfc0cc791c055739872e7255fe032cac1abe9c/configs/rec/svtrv2/readme.md).
+OpenOCR and the checkpoint are cached under `.cache/ocr/`; downloads are checked
+against SHA-256 hashes before use. The checkpoint hash matches the existing
+experiment. Cached files and completed OCR exports are reused.
+
+Optional overrides are `--device cpu`, `--ocr-python /path/to/python` for a
+separate environment, and `--parseq-root`, `--openocr-root`, `--svtr-config`,
+`--svtr-checkpoint` for manually managed upstream assets. They are not needed
+for normal use. Network access is needed only when required assets are absent.
 Models run sequentially in separate processes to release GPU memory between
 recognizers. Missing records or GT mismatches stop the run; they do not become
 copy predictions or silently reduce the final evaluation.
@@ -49,8 +54,8 @@ copy predictions or silently reduce the final evaluation.
 model exports and `--step freeze` assembles or reuses the manifest. A complete
 manifest skips all preparation; existing files are not overwritten. To
 prepare a different seed, change `config.json` and set a new
-`OCR_DATA_MANIFEST` path and output directory rather than replacing an active
-experiment's data.
+`data_manifest` path, which also changes the default output directory, rather
+than replacing an active experiment's data.
 
 ## Sampling
 

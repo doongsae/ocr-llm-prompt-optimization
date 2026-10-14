@@ -49,15 +49,31 @@ label eligibility and OCR-training overlap limitations.
 
 ## Configuration
 
-Edit the root `config.json`:
+Create one local configuration file:
+
+```bash
+cp config.example.json config.json
+```
+
+Set `openai_api_key` to your [OpenAI API key](https://platform.openai.com/api-keys)
+and `data_root` to the downloaded benchmark directory. All other settings have
+defaults:
 
 ```json
 {
+  "openai_api_key": "",
+  "data_root": "datasets",
+  "data_manifest": "data/frozen_rows.csv.gz",
   "seed": 42,
   "gepa_error_ratio": 0.75,
   "bootstrap_error_ratio": 0.60
 }
 ```
+
+`config.json` is Git-ignored because it contains credentials. Only the empty-key
+`config.example.json` is published; do not put a real key in that template.
+Relative paths are resolved from the repository root. Without `config.json`,
+offline commands use the template defaults. No `.env` file is needed.
 
 `seed` controls new splits and GEPA; Bootstrap uses `seed + 1`.
 Ratios are fractions: `0.75` = 75%. They control raw-OCR-error proportions in
@@ -66,20 +82,16 @@ not reward weights or final few-shot composition.
 
 ## Execution
 
-Python 3.10+. Install the prompt-pipeline environment:
+Python 3.10+. Install the dependencies in the active environment:
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -r ocr/requirements.txt
 ```
 
-Prepare data using a separate OCR environment and existing upstream assets:
+After configuring the API key and data directory, run:
 
 ```bash
-python -m pipeline prepare \
-  --ocr-python <OCR_ENV_PYTHON> --data-root <BENCHMARK_DIRECTORY> \
-  --openocr-root <OPENOCR_CHECKOUT> --svtr-config <SVTRV2_INFER_YAML> \
-  --svtr-checkpoint <SVTRV2_BEST_PTH>
-
+python -m pipeline prepare
 python -m pipeline preflight
 python -m pipeline api-smoke
 python -m pipeline all
@@ -88,12 +100,17 @@ python -m pipeline all
 `prepare` defaults to split -> OCR -> manifest. Existing manifest, split and
 completed OCR results are reused; only missing model exports are run. Invalid
 or mismatched rows are not silently accepted. A changed seed does not replace
-an existing split: use a new `OCR_DATA_MANIFEST` path for a new split.
+an existing split: use a new `data_manifest` path for a new split.
 `all` runs prompt training and Test, not OCR.
 
-Default data is `data/frozen_rows.csv.gz`; `OCR_DATA_MANIFEST` changes this path.
-Set `OPENAI_API_KEY` before `api-smoke` / `all`, which make paid API calls.
-Data and generated outputs are Git-ignored. OCR setup details:
+Official OCR code, inference configuration and pretrained weights are downloaded
+automatically and cached. No model-source, YAML or checkpoint path is required.
+SVTRv2 uses a pinned OpenOCR commit and the same verified U14M-Filter checkpoint;
+the other five models use PARSeq's pretrained releases.
+Only `api-smoke` / `all` in the sequence above make paid API calls; they require
+the API key in `config.json`. Data and generated outputs are Git-ignored.
+An existing `OPENAI_API_KEY` remains a fallback; `OCR_DATA_MANIFEST` overrides
+the configured manifest path for scripted runs. OCR setup details:
 [OCR Preparation](ocr/README.md).
 
 ## Results and Checks

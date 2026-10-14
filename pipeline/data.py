@@ -39,7 +39,7 @@ def read_csv_clean(path: Path, **kwargs) -> pd.DataFrame:
 def _cached_data_manifest() -> pd.DataFrame:
     if not DATA_MANIFEST.exists():
         raise FileNotFoundError(
-            f"missing frozen data manifest: {DATA_MANIFEST}; supply the private manifest or set OCR_DATA_MANIFEST"
+            f"missing frozen data manifest: {DATA_MANIFEST}; run prepare or set data_manifest in config.json"
         )
     frame = read_csv_clean(DATA_MANIFEST)
     missing = [column for column in DATA_COLUMNS if column not in frame]

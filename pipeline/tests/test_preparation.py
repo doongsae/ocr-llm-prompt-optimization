@@ -1,12 +1,15 @@
 """Seed selection, selected-image export, and the pipeline handoff without API calls."""
 
 import importlib.util
+import hashlib
 import io
 import json
+import os
 import sys
 import tempfile
 import time
 import unittest
+import zipfile
 from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,7 +18,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from ocr import prepare
-from pipeline import cli, config, contracts, data
+from pipeline import cli, config, contracts, data, openai_lm
 
 
 def catalogue(size=30):
@@ -224,6 +227,17 @@ class LMDBTests(unittest.TestCase):
 
 
 class PreparationCLITests(unittest.TestCase):
+    def test_pipeline_prepare_needs_no_model_or_python_paths(self):
+        with patch.object(sys, "argv", ["pipeline", "prepare"]), \
+                patch.object(cli.subprocess, "run") as run:
+            cli.main()
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], sys.executable)
+        self.assertEqual(command[command.index("--data-root") + 1], str(config.DATA_ROOT))
+        self.assertNotIn("--openocr-root", command)
+        self.assertNotIn("--svtr-config", command)
+        self.assertNotIn("--svtr-checkpoint", command)
+
     def test_pipeline_prepare_forwards_parameters_without_api_or_training(self):
         arguments = ["pipeline", "prepare", "--data-root", "/tmp/benchmark", "--seed", "51",
                      "--ocr-python", "ocr-python", "--step", "split"]
@@ -275,15 +289,130 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(module.SETTINGS["gepa_error_ratio"], 0.8)
         self.assertEqual(module.SETTINGS["bootstrap_error_ratio"], 0.5)
 
+    def test_config_template_is_used_without_a_local_file(self):
+        spec = importlib.util.spec_from_file_location("config_template_fixture", config.HERE / "config.py")
+        module = importlib.util.module_from_spec(spec)
+        with patch.object(Path, "is_file", return_value=False):
+            spec.loader.exec_module(module)
+        self.assertEqual(module.USER_CONFIG["openai_api_key"], "")
+        self.assertEqual(module.DATA_ROOT, config.ROOT / "datasets")
+
+    def test_config_key_and_relative_paths_are_loaded_without_environment_changes(self):
+        values = {"seed": 42, "gepa_error_ratio": 0.75, "bootstrap_error_ratio": 0.6,
+                  "openai_api_key": " config-fixture ", "data_root": "sample-data",
+                  "data_manifest": "sample-output/rows.csv.gz"}
+        spec = importlib.util.spec_from_file_location("config_paths_fixture", config.HERE / "config.py")
+        module = importlib.util.module_from_spec(spec)
+        with patch.object(Path, "read_text", return_value=json.dumps(values)), patch.dict(os.environ, {}, clear=True):
+            spec.loader.exec_module(module)
+            self.assertEqual(module.openai_api_key(), "config-fixture")
+            self.assertNotIn("OPENAI_API_KEY", os.environ)
+        self.assertEqual(module.DATA_ROOT, config.ROOT / "sample-data")
+        self.assertEqual(module.DATA_MANIFEST, config.ROOT / "sample-output/rows.csv.gz")
+        self.assertNotIn("openai_api_key", module.SETTINGS)
+
+    def test_key_environment_fallback_and_manifest_override_remain_supported(self):
+        with patch.dict(config.USER_CONFIG, {"openai_api_key": ""}), \
+                patch.dict(os.environ, {"OPENAI_API_KEY": "environment-fixture"}):
+            self.assertEqual(config.openai_api_key(), "environment-fixture")
+        with patch.dict(config.USER_CONFIG, {"openai_api_key": "configured-fixture"}), \
+                patch.dict(os.environ, {"OPENAI_API_KEY": "environment-fixture"}):
+            self.assertEqual(config.openai_api_key(), "configured-fixture")
+        spec = importlib.util.spec_from_file_location("config_environment_fixture", config.HERE / "config.py")
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(os.environ, {"OCR_DATA_MANIFEST": "/tmp/override-fixture.csv.gz"}):
+            spec.loader.exec_module(module)
+        self.assertEqual(module.DATA_MANIFEST, Path("/tmp/override-fixture.csv.gz"))
+
+    def test_sdk_receives_configured_key_without_an_api_request(self):
+        openai_lm.sdk_client.cache_clear()
+        try:
+            with patch.dict(config.USER_CONFIG, {"openai_api_key": "configured-fixture"}), \
+                    patch.dict(os.environ, {}, clear=True), patch.object(openai_lm, "OpenAI") as client:
+                openai_lm.sdk_client()
+                self.assertEqual(client.call_args.kwargs["api_key"], "configured-fixture")
+                client.return_value.chat.completions.create.assert_not_called()
+        finally:
+            openai_lm.sdk_client.cache_clear()
+
     def test_invalid_seed_or_ratio_is_rejected_before_any_work(self):
         valid = {"seed": 42, "gepa_error_ratio": 0.75, "bootstrap_error_ratio": 0.6}
         for key, value in (("seed", -1), ("seed", True), ("gepa_error_ratio", 75),
-                           ("gepa_error_ratio", 0), ("bootstrap_error_ratio", 1.1)):
+                           ("gepa_error_ratio", 0), ("bootstrap_error_ratio", 1.1),
+                           ("openai_api_key", None), ("data_root", ""), ("data_manifest", [])):
             with self.subTest(key=key, value=value), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "config.json"
                 path.write_text(json.dumps({**valid, key: value}), encoding="utf-8")
                 with self.assertRaises(ValueError):
                     config.load_config(path)
+
+
+class OCRAssetTests(unittest.TestCase):
+    def test_valid_download_is_atomically_cached_and_reused_offline(self):
+        payload = b"official-asset-fixture"
+        digest = hashlib.sha256(payload).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "asset.zip"
+            with patch.object(prepare, "urlopen", return_value=io.BytesIO(payload)) as download:
+                self.assertEqual(prepare.download_asset("https://example.invalid/asset", path, digest), path)
+            download.assert_called_once()
+            before = path.stat().st_mtime_ns
+            with patch.object(prepare, "urlopen") as download:
+                prepare.download_asset("https://example.invalid/asset", path, digest)
+            download.assert_not_called()
+            self.assertEqual(path.stat().st_mtime_ns, before)
+
+    def test_bad_or_partial_download_is_not_installed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "asset.zip"
+            with patch.object(prepare, "urlopen", return_value=io.BytesIO(b"wrong")), \
+                    self.assertRaisesRegex(ValueError, "downloaded OCR asset hash mismatch"):
+                prepare.download_asset("https://example.invalid/asset", path, "expected")
+            self.assertFalse(path.exists())
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_corrupt_cache_is_not_silently_replaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "asset.zip"
+            path.write_bytes(b"changed")
+            with patch.object(prepare, "urlopen") as download, \
+                    self.assertRaisesRegex(ValueError, "cached OCR asset hash mismatch"):
+                prepare.download_asset("https://example.invalid/asset", path, "expected")
+            download.assert_not_called()
+
+    def test_default_svtr_assets_are_resolved_without_user_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / ".cache" / "ocr"
+            source = cache / f"OpenOCR-{prepare.OPENOCR_COMMIT}"
+            archive = root / "upstream.zip"
+            with zipfile.ZipFile(archive, "w") as handle:
+                handle.writestr(f"{source.name}/openrec/__init__.py", "")
+                handle.writestr(f"{source.name}/{prepare.SVTR_CONFIG_PATH}", "official fixture")
+            checkpoint = root / "best.pth"
+            checkpoint.write_bytes(b"checkpoint fixture")
+            cache.mkdir(parents=True)
+            args = Namespace()
+            with patch.object(prepare, "ROOT", root), \
+                    patch.object(prepare, "download_asset", side_effect=[archive, checkpoint]) as download:
+                prepare.resolve_svtr_assets(args)
+            self.assertEqual(download.call_count, 2)
+            self.assertEqual(args.openocr_root, source)
+            self.assertEqual(args.svtr_config, source / prepare.SVTR_CONFIG_PATH)
+            self.assertEqual(args.svtr_checkpoint, checkpoint)
+            self.assertTrue(args.svtr_config.is_file())
+
+    def test_explicit_local_assets_never_download_or_overwrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "openrec").mkdir()
+            config_file, checkpoint = root / "inference.yml", root / "best.pth"
+            config_file.write_text("custom fixture", encoding="utf-8")
+            checkpoint.write_bytes(b"custom fixture")
+            args = Namespace(openocr_root=root, svtr_config=config_file, svtr_checkpoint=checkpoint)
+            with patch.object(prepare, "download_asset") as download:
+                prepare.resolve_svtr_assets(args)
+            download.assert_not_called()
 
 
 @unittest.skipUnless(all(importlib.util.find_spec(name) for name in ("lmdb", "torch", "torchvision", "PIL")),

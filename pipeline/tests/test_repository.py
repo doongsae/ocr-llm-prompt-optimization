@@ -15,15 +15,25 @@ import collect_archive as archive
 
 
 class PublicationTests(unittest.TestCase):
-    def test_environment_template_is_allowed(self):
-        self.assertEqual(publication.inspect(".env.example", lambda: b"OPENAI_API_KEY=\n"), [])
+    def test_config_template_is_allowed_only_with_an_empty_key(self):
+        self.assertEqual(publication.inspect("config.example.json", lambda: b'{"openai_api_key": ""}'), [])
+        self.assertIn("example config must contain an empty API key",
+                      publication.inspect("config.example.json", lambda: b'{"openai_api_key": "not-empty"}'))
 
     def test_private_names_are_rejected_without_reading_contents(self):
-        for name in (".openai_key.key", ".env", ".env.local", "weights.pth"):
+        for name in (".openai_key.key", ".env", ".env.example", ".env.local", "weights.pth", "config.json"):
             with self.subTest(name=name):
                 reader = Mock()
                 self.assertTrue(publication.inspect(name, reader))
                 reader.assert_not_called()
+
+    def test_worktree_check_skips_local_config_without_reading_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config.json").write_text("not publication data", encoding="utf-8")
+            (root / "config.example.json").write_text('{"openai_api_key": ""}', encoding="utf-8")
+            with patch.object(publication, "ROOT", root):
+                self.assertEqual([name for name, _ in publication.files(False)], ["config.example.json"])
 
     def test_generated_staged_file_is_rejected(self):
         reader = Mock()

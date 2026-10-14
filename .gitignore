@@ -1,7 +1,7 @@
 # Secrets and local configuration
+/config.json
 .env
 .env.*
-!.env.example
 *.key
 *.pem
 *.p12
