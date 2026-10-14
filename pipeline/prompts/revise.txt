@@ -1,0 +1,14 @@
+Revise the instruction to address each error pattern. Focus on root causes, not symptoms.
+
+Task: scene-text OCR post-correction. Input: one OCR string. Output: one corrected
+string. Keep the input/output field contract unchanged. No images, confidence,
+other recognizer outputs, or runtime GT are available.
+
+Current instruction:
+{instruction}
+
+Structured error diagnosis (JSON):
+{diagnosis}
+
+Return only a JSON object with a "new_instruction" string.
+

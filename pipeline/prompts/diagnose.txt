@@ -1,0 +1,20 @@
+Analyze the scene-text OCR post-correction errors below under the current instruction.
+Group the observed failures into recurring structural patterns. For each pattern,
+provide a short name, its root cause, the error IDs belonging to it, and a suggested
+instruction fix. Use up to seven patterns, no more than the number of observed errors.
+
+The task input is one OCR string. The task output is one corrected string. Images,
+OCR confidence, other recognizers' outputs, and the current input's GT are not
+available to the correction model. Ground truth is available here for training analysis.
+EM is computed after lowercasing and retaining only ASCII letters and digits.
+Edit distances are observations, not additional rewards.
+
+Current instruction:
+{instruction}
+
+Observed errors (JSON):
+{errors}
+
+Return a JSON object with a "patterns" array. Each pattern must contain "name",
+"root_cause", "error_ids" (an array of the supplied error IDs), and "suggested_fix".
+

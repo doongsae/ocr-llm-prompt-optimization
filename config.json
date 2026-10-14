@@ -1,0 +1,5 @@
+{
+  "seed": 42,
+  "gepa_error_ratio": 0.75,
+  "bootstrap_error_ratio": 0.60
+}

@@ -1,0 +1,48 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+credentials*
+secrets*
+
+# Environments, caches, generated outputs
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.cache/
+.pytest_cache/
+data/
+datasets/
+checkpoints/
+weights/
+**/artifacts/
+**/status/
+**/manifests/
+**/results/
+**/logs/
+*.log
+*.db
+*.sqlite*
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.lmdb
+*.mdb
+*.zip
+*.tar
+*.tar.gz
+*.tar.xz
+*.csv.gz
+
+# Local publication-check outputs
+PUBLICATION_CHECK.json
+.DS_Store
+
+# Historical research source is kept locally and reviewed separately.
+archive/
