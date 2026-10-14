@@ -1,22 +1,32 @@
 # Validation
 
-Validated on 2026-10-14 with Python 3.10. No paid API calls were made during
-repository validation.
+Validated on 2026-10-14 with Python 3.10.
 
 | Check | Result |
 | --- | --- |
-| Unit suite with the historical manifest | 89 tests passed |
+| Unit suite with the historical manifest | 91 tests passed |
 | Historical data and prompt contracts | Matched for 35,274 rows and 24 scopes |
 | Mocked native optimizer workflow | Matching requests, selected programs, validation outputs and usage |
-| OCR integration | Six checkpoints, 15 datasets, 117 images, 702 prediction rows |
+| CPU and CUDA OCR integration | Six checkpoints, 15 datasets, 117 images per model; all 702 prediction rows matched |
+| SVTRv2 batch coverage | Batch sizes 1, 2, 4, 8 and 128; exact multiples and partial batches covered |
+| Live API smoke | 8 correction calls and 2 reflection calls completed successfully |
 | Automatic versus manual model assets | All six prediction CSVs and the split CSV were byte-identical |
 | Cache reuse | Completed OCR results and assets reused without inference or download |
 | Prepared-data preflight | 24 scopes and 90 Test cells passed |
 | Historical error analysis | Aggregate CSVs matched the reference copies |
 
-The OCR integration ran on CPU using 36 Train, 36 Validation and 45 Test images
-per model. The automatic-asset run took 36.31 backend seconds, excluding worker
-startup. This is an integration check, not a full benchmark result.
+The OCR integration used 36 Train, 36 Validation and 45 Test images per model.
+The CUDA run used an NVIDIA A100 80GB at batch size 1 and took 29.05 backend
+seconds, excluding worker startup. Its predictions matched the CPU run for all
+six models. A separate SVTRv2 CPU regression at batch size 4 also matched all
+117 reference rows. These are integration checks, not full benchmark results.
+
+The live API smoke used real Train OCR strings with the production adapter and
+prompts: 8 corrections, followed by one failure diagnosis and instruction
+revision. All 10 requests used `gpt-6-luna` with `reasoning_effort="none"` and
+retries disabled. Usage was 2,204 input tokens, 348 output tokens and 0 reasoning
+tokens over 18.32 seconds. The generated instruction was not applied; this does
+not constitute a full optimizer run or a performance evaluation.
 
 The mocked optimizer comparison used three synthetic examples and bounded
 native optimizers. Request counts matched: initial prompt 3, GEPA 21,

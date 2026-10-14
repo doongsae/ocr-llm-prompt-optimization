@@ -22,6 +22,8 @@ SVTRv2 uses OpenOCR commit `45bfc0cc791c055739872e7255fe032cac1abe9c`, its
 official CTC inference YAML, and the [official SVTRv2-B checkpoint](https://github.com/Topdu/OpenOCR/blob/45bfc0cc791c055739872e7255fe032cac1abe9c/configs/rec/svtrv2/readme.md).
 The source archive and checkpoint downloads are verified by SHA-256.
 Assets are downloaded only when absent; valid cached assets are reused.
+SVTRv2 preserves OpenOCR's evaluation ratio buckets and adaptive batch sizes
+while including every selected image, including full and partial final batches.
 
 ## Outputs and Reuse
 

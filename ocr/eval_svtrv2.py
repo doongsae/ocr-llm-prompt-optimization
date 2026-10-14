@@ -1,9 +1,8 @@
-"""OpenOCR SVTRv2 inference with the true LMDB ID retained through RatioSampler."""
+"""OpenOCR SVTRv2 inference with complete ratio batches and original LMDB IDs."""
 
 from __future__ import annotations
 
 import argparse
-import copy
 import io
 import sys
 import time
@@ -25,8 +24,6 @@ class SelectedRatioDataset(Dataset):
     def __init__(self, data_dir, samples, cfg, create_operators, transform):
         self.transform = transform
         self.ops = create_operators(cfg["Eval"]["dataset"]["transforms"], cfg["Global"])
-        self.ds_width = cfg["Eval"]["dataset"].get("ds_width", True)
-        self.seed = 1
         self.base_shape = cfg["Eval"]["dataset"].get("base_shape", [[64, 64], [96, 48], [112, 40], [128, 32]])
         self.base_h = cfg["Eval"]["dataset"].get("base_h", 32)
         self.transforms = T.Compose([T.ToTensor(), T.Normalize(0.5, 0.5)])
@@ -101,6 +98,22 @@ def resolve_dict_paths(value, root):
             resolve_dict_paths(item, root)
 
 
+def evaluation_batches(dataset, sampler_config, batch_size):
+    scale = sampler_config["scales"][0]
+    width, height = scale if isinstance(scale, list) else (scale, scale)
+    max_bs = sampler_config.get("max_bs", 1024)
+    indices = dataset.wh_ratio_sort
+    ratios = dataset.wh_ratio[indices]
+    # Preserve OpenOCR's evaluation buckets and sizes, including full final batches.
+    for ratio in np.unique(ratios):
+        bucket = indices[ratios == ratio]
+        size = (batch_size if ratio < 5 else
+                min(max_bs, max(1, int(width * batch_size / (height * ratio)))))
+        for start in range(0, len(bucket), size):
+            yield [[int(ratio * height), height, int(index), int(ratio)]
+                   for index in bucket[start:start + size]]
+
+
 def evaluate_model(args):
     started = time.monotonic()
     root = args.openocr_root.resolve()
@@ -110,7 +123,6 @@ def evaluate_model(args):
     from openrec.modeling import build_model
     from openrec.postprocess import build_post_process
     from openrec.preprocess import create_operators, transform
-    from tools.data.ratio_sampler import RatioSampler
     from tools.engine.config import Config
 
     selected = read_selection(args.output_dir / "selection.csv")
@@ -141,14 +153,11 @@ def evaluate_model(args):
             continue
         dataset = SelectedRatioDataset(args.data_root / DATASET_PATHS[name], samples, cfg, create_operators, transform)
         try:
-            sampler_cfg = copy.deepcopy(cfg["Eval"]["sampler"])
-            sampler_cfg.pop("name", None)
-            sampler_cfg.update(first_bs=args.batch_size, is_training=False)
-            sampler = RatioSampler(dataset, **sampler_cfg)
-            loader = DataLoader(dataset, batch_sampler=sampler, num_workers=0, pin_memory=False)
+            batches = list(evaluation_batches(dataset, cfg["Eval"]["sampler"], args.batch_size))
+            loader = DataLoader(dataset, batch_sampler=batches, num_workers=0, pin_memory=False)
             with torch.no_grad():
                 for batch_index, batch in enumerate(loader):
-                    items = [dataset.items[int(prop[2])] for prop in sampler.batch_list[batch_index]]
+                    items = [dataset.items[int(prop[2])] for prop in batches[batch_index]]
                     device_batch = [item.to(device) if hasattr(item, "to") else item for item in batch]
                     numpy_batch = [item.numpy() if hasattr(item, "numpy") else item for item in batch]
                     preds = model(device_batch[0], data=device_batch[1:])
@@ -161,7 +170,7 @@ def evaluate_model(args):
     provenance = {"framework": "Topdu/OpenOCR", "config_sha256": file_hash(args.config),
                   "checkpoint_sha256": file_hash(args.checkpoint), "device": str(device),
                   "batch_size": args.batch_size, "torch_version": torch.__version__,
-                  "amp": False, "sampler": "RatioSampler with original LMDB IDs"}
+                  "amp": False, "sampler": "OpenOCR evaluation ratio batches with complete coverage"}
     return save_predictions(args.output_dir, "svtrv2", rows, selected, provenance, started)
 
 

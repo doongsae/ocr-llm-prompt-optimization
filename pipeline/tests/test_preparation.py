@@ -418,6 +418,45 @@ class OCRAssetTests(unittest.TestCase):
 @unittest.skipUnless(all(importlib.util.find_spec(name) for name in ("lmdb", "torch", "torchvision", "PIL")),
                      "OCR dependencies are not installed")
 class SelectedOCRTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import importlib
+
+        # Keep native operator registration outside temporary sys.modules fixtures.
+        importlib.import_module("torchvision")
+
+    def load_svtr_backend(self):
+        with patch.dict(sys.modules, {"prepare": prepare}):
+            spec = importlib.util.spec_from_file_location("svtr_batch_fixture", config.ROOT / "ocr/eval_svtrv2.py")
+            backend = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(backend)
+        return backend
+
+    def test_svtr_batches_cover_every_sample_including_exact_multiples(self):
+        import numpy as np
+
+        backend = self.load_svtr_backend()
+        ratios = np.array([1] * 8 + [2] * 4 + [6] * 3 + [12] * 2)
+        dataset = SimpleNamespace(wh_ratio=ratios, wh_ratio_sort=np.argsort(ratios))
+        for size in (1, 2, 4, 8, 128):
+            with self.subTest(batch_size=size):
+                batches = list(backend.evaluation_batches(dataset, {"scales": [[128, 32]]}, size))
+                indices = [item[2] for batch in batches for item in batch]
+                self.assertEqual(sorted(indices), list(range(len(ratios))))
+                self.assertTrue(all(0 < len(batch) <= size for batch in batches))
+
+    def test_svtr_batches_preserve_official_ratio_shapes_and_adaptive_sizes(self):
+        import numpy as np
+
+        backend = self.load_svtr_backend()
+        dataset = SimpleNamespace(wh_ratio=np.array([1] * 4 + [6] * 3 + [12] * 2),
+                                  wh_ratio_sort=np.arange(9))
+        batches = list(backend.evaluation_batches(dataset, {"scales": [[128, 32]]}, 4))
+        self.assertEqual([[item[2] for item in batch] for batch in batches],
+                         [[0, 1, 2, 3], [4, 5], [6], [7], [8]])
+        self.assertEqual([(batch[0][0], batch[0][1]) for batch in batches],
+                         [(32, 32), (192, 32), (192, 32), (384, 32), (384, 32)])
+
     def test_parseq_reads_only_selected_images_and_preserves_true_ids(self):
         import lmdb
         import torch
