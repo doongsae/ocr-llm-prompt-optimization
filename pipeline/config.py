@@ -1,4 +1,4 @@
-"""Frozen experiment settings; historical experiment files stay read-only."""
+"""Local configuration and experiment settings."""
 
 import json
 import os

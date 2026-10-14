@@ -1,4 +1,4 @@
-"""EM reward, Boolean trace admission, and factual feedback are separate contracts."""
+"""EM scoring, exact-trace admission and reflection feedback."""
 
 import json
 

@@ -65,7 +65,7 @@ class MetricTests(unittest.TestCase):
                 self.assertEqual(feedback.score, expected)
                 self.assertEqual(json.loads(feedback.feedback), facts(ex, pred))
 
-    def test_normalization_is_unchanged(self):
+    def test_normalization_ignores_case_and_non_alphanumeric(self):
         self.assertEqual(exact_metric(example("sp-ed", "SPEED!"), prediction("Speed.")), 1)
 
     def test_missing_empty_and_explanatory_outputs_are_not_successes(self):
@@ -74,7 +74,7 @@ class MetricTests(unittest.TestCase):
             self.assertEqual(exact_metric(example(), pred), 0)
             self.assertIs(trace_is_exact(example(), pred), False)
 
-    def test_factual_feedback_contains_no_old_prescriptions(self):
+    def test_feedback_contains_facts_only(self):
         value = gepa_metric(example("255", "256"), prediction("255"), pred_name="correct")
         record = json.loads(value.feedback)
         self.assertEqual(record["em"], 0)

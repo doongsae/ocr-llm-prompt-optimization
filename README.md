@@ -19,14 +19,13 @@ Benchmark images + GT -> seed split -> selected-image OCR -> frozen manifest
 | Test | Freeze all programs, then compare initial prompt, GEPA, and GEPA+Bootstrap against raw OCR on the same Test images. |
 
 At inference, the only LLM input is the target model's OCR string; its output
-is one corrected string. GT is used for training feedback and scoring, not as
-a runtime input. There is no ensemble, verifier, image input to the LLM, or
-cross-model prediction input. Correction and reflection both use `gpt-6-luna`.
+is one corrected string. GT is used for training feedback and scoring.
+Correction and reflection both use `gpt-6-luna` with `reasoning_effort="none"`.
 
 Reward is normalized Exact Match: lowercase ASCII-alphanumeric strings must
 match completely (1), otherwise 0. Edit distance is a feedback/analysis field,
-not a partial reward. GEPA uses ESPO-inspired diagnosis/revision templates,
-not the full ESPO optimizer.
+not a partial reward. GEPA uses ESPO-inspired diagnosis/revision templates;
+see [Reflection Sources](docs/REFLECTION_SOURCES.md) for the adaptation scope.
 
 ## Models and Data
 
@@ -42,53 +41,38 @@ evaluation covers 6 models x 15 datasets = 90 cells.
 
 Split images before OCR; run recognizers only on selected images. Train and
 Validation each target 500 non-General images, allocated proportionally.
-General uses random Train 120 / Validation 300, without an error/correct quota.
-Test uses up to 300 remaining images per dataset. All six models share the new
+General uses random Train 120 / Validation 300.
+Test uses up to 300 remaining images per dataset. All six models share the
 split. See [Data Protocol](docs/DATA_PROTOCOL.md) for dataset names, rounding,
 label eligibility and OCR-training overlap limitations.
 
-## Configuration
+## Setup
 
-Create one local configuration file:
+Python 3.10+. Install dependencies and create the local configuration:
 
 ```bash
+python -m pip install -r requirements.txt -r ocr/requirements.txt
 cp config.example.json config.json
 ```
 
 Set `openai_api_key` to your [OpenAI API key](https://platform.openai.com/api-keys)
-and `data_root` to the downloaded benchmark directory. All other settings have
-defaults:
+and `data_root` to the downloaded benchmark directory in `config.json`:
 
-```json
-{
-  "openai_api_key": "",
-  "data_root": "datasets",
-  "data_manifest": "data/frozen_rows.csv.gz",
-  "seed": 42,
-  "gepa_error_ratio": 0.75,
-  "bootstrap_error_ratio": 0.60
-}
-```
+| Setting | Meaning | Default |
+| --- | --- | --- |
+| `openai_api_key` | OpenAI API key | Empty; required for LLM calls |
+| `data_root` | Benchmark LMDB directory | `datasets` |
+| `data_manifest` | Prepared OCR table | `data/frozen_rows.csv.gz` |
+| `seed` | Split and GEPA seed; Bootstrap uses seed + 1 | `42` |
+| `gepa_error_ratio` | Target raw-OCR-error fraction in the GEPA Train pool | `0.75` |
+| `bootstrap_error_ratio` | Target raw-OCR-error fraction in the Bootstrap Train pool | `0.60` |
 
-`config.json` is Git-ignored because it contains credentials. Only the empty-key
-`config.example.json` is published; do not put a real key in that template.
-Relative paths are resolved from the repository root. Without `config.json`,
-offline commands use the template defaults. No `.env` file is needed.
-
-`seed` controls new splits and GEPA; Bootstrap uses `seed + 1`.
-Ratios are fractions: `0.75` = 75%. They control raw-OCR-error proportions in
-optimizer training pools by retaining errors and subsampling correct rows,
-not reward weights or final few-shot composition.
+Paths are relative to the repository root unless absolute. Error ratios retain
+raw OCR errors and subsample correct rows; they are not reward weights or final
+demo proportions. `config.json` is Git-ignored; keep real keys out of
+`config.example.json`.
 
 ## Execution
-
-Python 3.10+. Install the dependencies in the active environment:
-
-```bash
-python -m pip install -r requirements.txt -r ocr/requirements.txt
-```
-
-After configuring the API key and data directory, run:
 
 ```bash
 python -m pipeline prepare
@@ -98,31 +82,24 @@ python -m pipeline all
 ```
 
 `prepare` defaults to split -> OCR -> manifest. Existing manifest, split and
-completed OCR results are reused; only missing model exports are run. Invalid
-or mismatched rows are not silently accepted. A changed seed does not replace
-an existing split: use a new `data_manifest` path for a new split.
+completed OCR results are reused; only missing model exports are run.
+To generate a new split, change `seed` and use a new `data_manifest` path.
 `all` runs prompt training and Test, not OCR.
 
 Official OCR code, inference configuration and pretrained weights are downloaded
-automatically and cached. No model-source, YAML or checkpoint path is required.
-SVTRv2 uses a pinned OpenOCR commit and the same verified U14M-Filter checkpoint;
-the other five models use PARSeq's pretrained releases.
-Only `api-smoke` / `all` in the sequence above make paid API calls; they require
-the API key in `config.json`. Data and generated outputs are Git-ignored.
-An existing `OPENAI_API_KEY` remains a fallback; `OCR_DATA_MANIFEST` overrides
-the configured manifest path for scripted runs. OCR setup details:
-[OCR Preparation](ocr/README.md).
+automatically and cached. `api-smoke` and `all` make paid API calls.
+See [OCR Preparation](ocr/README.md) for cache paths and optional overrides.
 
 ## Results and Checks
 
 Historical Test: Raw OCR 83.8403%; GEPA+Bootstrap 86.2335%,
 921 fixes / 279 harms, 62 wins / 6 ties / 22 losses over 90 cells.
-[Reference tables](reference_results/README.md) are old results, not results
-from a new seed. The historical benchmark was repeatedly inspected.
+[Reference tables](reference_results/README.md) use the historical split, which
+was repeatedly inspected. They are not results from a new seed.
 
 ```bash
 python -m unittest discover -s pipeline/tests -v
 python tools/check_publication.py
 ```
 
-[Validation](docs/VALIDATION.md) | [Publication](docs/GITHUB_PREPARATION.md)
+[Validation](docs/VALIDATION.md)

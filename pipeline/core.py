@@ -1,4 +1,4 @@
-"""The original single-input signature and normalized exact-match contract."""
+"""OCR correction signature, program factory and text normalization."""
 
 import random
 

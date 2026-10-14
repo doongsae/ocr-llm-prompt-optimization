@@ -149,7 +149,7 @@ def select_splits(catalogue, seed, train_target, val_target, test_per_dataset,
             val_n = max(2, int(val_target * count / non_general_size)) if non_general_size else 0
         if count < train_n + val_n + 1:
             raise ValueError(f"{dataset}: {count} eligible images cannot supply train={train_n}, val={val_n} and test")
-        # General was added separately; it must not consume the non-General split RNG.
+        # Keep General independent of the non-General split RNG.
         split_rng = np.random.RandomState(seed) if dataset == "General" else rng
         shuffled = split_rng.permutation(count).tolist()
         remaining = sorted(shuffled[train_n + val_n:])

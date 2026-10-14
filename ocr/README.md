@@ -1,87 +1,55 @@
 # OCR Preparation
 
-## Flow
-
-Read LMDB image IDs and GT -> seed split -> six recognizers on selected images
-only -> `frozen_rows.csv.gz` -> existing prompt pipeline.
-
-`prepare.py` owns splitting, sequential worker orchestration and manifest
-assembly. `eval_parseq_selected.py` handles the five PARSeq-distributed models;
-`eval_svtrv2.py` handles the official OpenOCR model. No recognizer is trained.
-The old full-benchmark exporter is not needed by this flow.
-
-Install both `requirements.txt` and `ocr/requirements.txt` from the repository
-root, as shown in the main README. A separate OCR environment is optional,
-not required. Official [PARSeq](https://github.com/baudm/parseq) and
-[OpenOCR](https://github.com/Topdu/OpenOCR) code and pretrained weights are
-downloaded automatically; no OCR training is performed.
-Dataset layout and checkpoint sources are in
-[Data Protocol](../docs/DATA_PROTOCOL.md). Datasets and weights are not bundled.
-
-## Execution
-
-Run from the repository root. The default manifest path is
-`data/frozen_rows.csv.gz`. Copy `config.example.json` to the Git-ignored
-`config.json` and set `data_root` to the downloaded benchmark directory.
-The `data_manifest` setting controls both preparation and prompt training;
-configure `openai_api_key` before the paid `api-smoke` and `all` stages.
+From the repository root, after completing [Setup](../README.md#setup):
 
 ```bash
 python -m pipeline prepare
-
-python -m pipeline preflight
-python -m pipeline api-smoke
-python -m pipeline all
 ```
 
-Only `api-smoke` and `all` in this sequence use a paid LLM API. PARSeq code and
-Real9 weights use the standard torch.hub cache. SVTRv2 uses OpenOCR commit
-`45bfc0cc791c055739872e7255fe032cac1abe9c`, its official CTC inference YAML,
-and the [official SVTRv2-B U14M-Filter weights](https://github.com/Topdu/OpenOCR/blob/45bfc0cc791c055739872e7255fe032cac1abe9c/configs/rec/svtrv2/readme.md).
-OpenOCR and the checkpoint are cached under `.cache/ocr/`; downloads are checked
-against SHA-256 hashes before use. The checkpoint hash matches the existing
-experiment. Cached files and completed OCR exports are reused.
+The command reads image IDs and GT from LMDB, creates the seed-based split,
+runs all six recognizers on the selected images, and writes the manifest.
+Each model runs in a separate sequential process to release GPU memory.
+Sampling and label eligibility are specified in [Data Protocol](../docs/DATA_PROTOCOL.md).
 
-Optional overrides are `--device cpu`, `--ocr-python /path/to/python` for a
-separate environment, and `--parseq-root`, `--openocr-root`, `--svtr-config`,
-`--svtr-checkpoint` for manually managed upstream assets. They are not needed
-for normal use. Network access is needed only when required assets are absent.
-Models run sequentially in separate processes to release GPU memory between
-recognizers. Missing records or GT mismatches stop the run; they do not become
-copy predictions or silently reduce the final evaluation.
+## Model Assets
 
-`--step split` prepares or reuses the split, `--step ocr` runs only missing
-model exports and `--step freeze` assembles or reuses the manifest. A complete
-manifest skips all preparation; existing files are not overwritten. To
-prepare a different seed, change `config.json` and set a new
-`data_manifest` path, which also changes the default output directory, rather
-than replacing an active experiment's data.
+| Models | Source and cache |
+| --- | --- |
+| CRNN, ViTSTR, TRBA, ABINet, PARSeq | [PARSeq](https://github.com/baudm/parseq) Real9 releases; torch.hub cache |
+| SVTRv2-B | [OpenOCR](https://github.com/Topdu/OpenOCR) U14M-Filter weights; `.cache/ocr/` |
 
-## Sampling
+SVTRv2 uses OpenOCR commit `45bfc0cc791c055739872e7255fe032cac1abe9c`, its
+official CTC inference YAML, and the [official SVTRv2-B checkpoint](https://github.com/Topdu/OpenOCR/blob/45bfc0cc791c055739872e7255fe032cac1abe9c/configs/rec/svtrv2/readme.md).
+The source archive and checkpoint downloads are verified by SHA-256.
+Assets are downloaded only when absent; valid cached assets are reused.
 
-- Seed comes from the root `config.json` (default 42). IDs are generated from the current LMDB labels, not
-  recovered from old experiment CSVs or hardcoded exclusion lists.
-- Non-General: Train and Validation targets are 500 each across the 14
-  datasets, allocated proportionally with `max(2, floor(target * n / N))`.
-  Actual totals can be below 500 due to rounding.
-- General: random Train 120 and Validation 300, with no 80-error/40-correct
-  quota and no recognizer-specific split.
-- Test: randomly sample up to 300 remaining images per dataset. Train,
-  Validation and Test keys are disjoint and shared by all six models.
-- Eligible GT has normalized ASCII-alphanumeric length 1-25. With SVTRv2,
-  its existing whitespace-removal/NFKD-ASCII label length must also be 1-25.
-  Unsupported counts are recorded before splitting, without model outputs.
+## Outputs and Reuse
 
-Sample counts and an optional split-only seed override are CLI options. The
-optimizer's separate error ratios are set in `config.json`; they do not
-control this image split.
-This creates a new split, not a reproduction of historical fixed-image results.
+`data_manifest` determines the manifest path and its parent output directory:
 
-## Outputs
+| Output | Contents |
+| --- | --- |
+| `selection.csv` | Split, dataset, LMDB image ID and GT |
+| `split.json` | Seed, source eligibility and split counts |
+| `predictions/<model>.csv` | Selected-image OCR predictions |
+| `predictions/<model>.json` | Output hashes, checkpoint provenance and runtime |
+| `preparation.json` | Combined preparation summary |
+| `frozen_rows.csv.gz` | Table consumed by prompt optimization |
 
-The output directory contains `selection.csv`, `split.json`, per-model
-`predictions/*.csv` and metadata, `preparation.json`, and the compressed
-manifest. Reports include split counts, source eligibility, selection/output
-hashes, checkpoint provenance and runtime. The manifest uses the existing
-pipeline's columns, model names and text normalization. All such data outputs
-belong in the Git-ignored `data/` directory, not in the public source tree.
+An existing manifest skips preparation. Otherwise, the saved split and valid
+OCR exports are reused, and only missing models run. Mismatched rows or hashes
+stop execution. To generate a new split, change `seed` and `data_manifest`.
+
+## Optional Overrides
+
+| Option | Use |
+| --- | --- |
+| `--step split`, `ocr`, `freeze` | Run one preparation stage instead of all stages |
+| `--device cpu` | Run OCR without CUDA |
+| `--batch-size` | Change the OCR batch size |
+| `--ocr-python` | Use a separate Python environment with OCR dependencies |
+| `--parseq-root`, `--openocr-root` | Use existing upstream source checkouts |
+| `--svtr-config`, `--svtr-checkpoint` | Use manually managed SVTRv2 assets |
+
+`python -m pipeline prepare --help` lists sampling overrides.
+`OCR_DATA_MANIFEST` overrides `data_manifest` for scripted runs.

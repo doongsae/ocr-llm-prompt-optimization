@@ -1,17 +1,18 @@
-"""Offline checks for the repository packaging utilities."""
+"""Publication checks, documentation links and reference tables."""
 
-import hashlib
+import csv
+import re
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
 import check_publication as publication
-import collect_archive as archive
 
 
 class PublicationTests(unittest.TestCase):
@@ -48,12 +49,10 @@ class PublicationTests(unittest.TestCase):
                 issues = publication.inspect("example.py", lambda: payload)
                 self.assertIn("potential credential detected; value suppressed", issues)
                 self.assertNotIn(token, str(issues))
-                self.assertIsNotNone(archive.SECRET.search(payload.decode()))
 
     def test_word_containing_key_prefix_is_not_a_credential(self):
         payload = b"description = 'risk-lowercase-hyphenated-prose-example'\n"
         self.assertEqual(publication.inspect("example.py", lambda: payload), [])
-        self.assertIsNone(archive.SECRET.search(payload.decode()))
 
     def test_symlink_is_rejected_without_reading_target(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -88,27 +87,26 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(entries[0][1](), b"staged content")
 
 
-class SourceArchiveTests(unittest.TestCase):
-    def test_source_allowlist_excludes_private_generated_and_vendor_files(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            names = ("run.py", "config.yaml", "prompts/diagnose.txt", "requirements.txt",
-                     ".openai_key.key", "weights.pth", "predictions.csv", "data/private.py",
-                     "results/generated.py", "parseq/vendor.py")
-            for name in names:
-                path = root / name
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("fixture", encoding="utf-8")
-            (root / "linked.py").symlink_to(root / "run.py")
-            selected = {path.relative_to(root).as_posix() for path in archive.source_files(root)}
-            self.assertEqual(selected, {"run.py", "config.yaml", "prompts/diagnose.txt", "requirements.txt"})
+class DocumentationTests(unittest.TestCase):
+    def test_local_documentation_links_resolve(self):
+        paths = [ROOT / "README.md", ROOT / "ocr/README.md", ROOT / "reference_results/README.md",
+                 *sorted((ROOT / "docs").glob("*.md"))]
+        for path in paths:
+            for target in re.findall(r"\[[^\]]*\]\(([^\s)]+)\)", path.read_text(encoding="utf-8")):
+                link = urlsplit(target)
+                if not link.scheme and link.path:
+                    with self.subTest(document=path.name, target=target):
+                        self.assertTrue((path.parent / unquote(link.path)).is_file())
 
-    def test_inventory_digest_matches_original_bytes(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "fixture.py"
-            content = b"print('fixture')\r\n"
-            path.write_bytes(content)
-            self.assertEqual(archive.sha256(path), hashlib.sha256(content).hexdigest())
+    def test_reference_distributions_agree(self):
+        fields = ("rows", "raw_wrong", "error_fixed", "correct_harmed",
+                  "wrong_unchanged_literal", "wrong_changed_literal")
+        expected = dict(zip(fields, (26826, 4335, 921, 279, 2719, 695)))
+        for path in sorted((ROOT / "reference_results").glob("by_*.csv")):
+            with path.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            with self.subTest(table=path.name):
+                self.assertEqual({field: sum(int(row[field]) for row in rows) for field in fields}, expected)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,4 @@
-"""ESPO-sourced diagnosis/revision templates inside GEPA's proposal hook.
-
-This is not the full ESPO optimizer: GEPA still controls minibatches and selection.
-"""
+"""ESPO-inspired diagnosis and revision proposals for GEPA."""
 
 import json
 from pathlib import Path
@@ -13,7 +10,7 @@ from .metrics import facts
 
 
 class ProposalFormatError(ValueError):
-    """An unusable LM proposal, not a broken data or execution contract."""
+    """Malformed reflection JSON or proposal fields."""
 
 
 def render(name, **values):

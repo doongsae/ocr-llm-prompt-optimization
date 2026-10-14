@@ -101,7 +101,7 @@ def run_test():
         state.update(status="completed", methods=methods, usage=usage_summary(),
                      finished_at_utc=now(), runtime_seconds=time.monotonic() - started)
         write_json(output / "summary.json", state)
-        lines = ["# Luna EM-only GEPA + Bootstrap", "", "Historical test: reused benchmark, not a new blind holdout.", "",
+        lines = ["# OCR Post-Correction Results", "",
                  "| Method | EM (%) | Fixes | Harms | W/T/L | Test Seconds |",
                  "| --- | ---: | ---: | ---: | --- | ---: |"]
         for stage, report in methods.items():

@@ -1,4 +1,4 @@
-"""Official OpenAI SDK transport behind DSPy's existing LM interface."""
+"""OpenAI SDK transport and usage accounting for DSPy."""
 
 import json
 import threading
@@ -31,7 +31,7 @@ _lock = threading.Lock()
 
 def require_key():
     if not openai_api_key():
-        raise RuntimeError("API key is missing. Set openai_api_key in the Git-ignored config.json before api-smoke/all.")
+        raise RuntimeError("API key is missing. Set openai_api_key in config.json before making LLM calls.")
 
 
 @lru_cache(maxsize=1)
@@ -70,7 +70,7 @@ class LunaLM(dspy.BaseLM):
         config["max_completion_tokens"] = config.pop("max_tokens")
         config["reasoning_effort"] = "none"
         if self.role == "student":
-            # Enforce the wire contract even when DSPy's model registry is stale.
+            # Enforce strict output independently of DSPy's model registry.
             config["response_format"] = CORRECTION_RESPONSE_FORMAT
         allowed = {"temperature", "max_completion_tokens", "reasoning_effort", "n", "response_format"}
         if set(config) - allowed:

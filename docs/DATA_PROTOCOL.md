@@ -3,8 +3,7 @@
 ## Dataset and OCR Sources
 
 Benchmark distribution: <https://huggingface.co/datasets/topdu/OpenOCR-Data>.
-The dataset repository also distributes filtered Union14M OCR training data;
-it is inaccurate to describe the entire repository as test-only.
+The distribution includes benchmark LMDBs and filtered Union14M training data.
 
 | Evaluation group | Datasets |
 | --- | --- |
@@ -12,12 +11,11 @@ it is inaccurate to describe the entire repository as test-only.
 | U14M | Curve, Multi-Oriented, Artistic, Contextless, Salient, Multi-Words, General |
 | OST | OST_weak, OST_heavy |
 
-The completed prompt experiment keeps UnionHard and General separate during
-training. It therefore uses 24 independent programs, not 18. Runtime prompts
-contain only the target OCR string and train demonstrations from its own scope.
+Prompt optimization separates U14M into UnionHard (six datasets) and General.
+Each OCR model has one program per group: 24 programs and 90 evaluation cells.
+Runtime prompts use only the target OCR string and the scope's Train demos.
 
-The five PARSeq-distributed recognizers are author-reproduced models trained on
-the Real collection, not the original model authors' MJ+ST checkpoints:
+The five PARSeq-distributed recognizers use the authors' Real-trained releases:
 
 | OCR model | Weight | Distribution |
 | --- | --- | --- |
@@ -35,7 +33,7 @@ Sources: <https://github.com/baudm/parseq/releases/tag/v1.0.0>,
 Real consists of COCO-Text, RCTW17, Uber-Text, ArT, LSVT, MLT19, ReCTS,
 TextOCR, and OpenVINO. SVTRv2-B uses Union14M-L-Filter.
 
-## Our Frozen Prompt-Optimization Split
+## Manifest
 
 The manifest is a processed OCR-output table with these columns:
 
@@ -44,9 +42,44 @@ split,model,dataset,image_idx,gt,gt_filtered,pred,pred_filtered,correct
 ```
 
 Split labels are `train`, `val`, and `test`. `image_idx` is a zero-based,
-dataset-local image identifier, not a global image ID. No OCR is rerun by the
-prompt optimizer. Rows and sampling order are preserved when this manifest is
-loaded. Strings are read with pandas `keep_default_na=False`.
+dataset-local LMDB image identifier. Prompt optimization loads this table
+without rerunning OCR, preserving row order. Strings are read with pandas
+`keep_default_na=False`.
+
+## Seed-Based Split
+
+`prepare` reads labels before OCR and samples without consulting model outputs.
+All six models share the generated Train/Validation/Test keys.
+
+| Split | Sampling |
+| --- | --- |
+| Non-General Train and Validation | Target 500 each across 14 datasets; per-dataset count is `max(2, floor(target * n / N))` |
+| General Train / Validation | Uniform random 120 / 300 images |
+| Test | Up to 300 images per dataset from the remaining pool |
+
+Here `n` is the dataset's eligible count and `N` the total eligible non-General
+count. Integer rounding can make totals differ from 500. The seed is read from
+`config.json`; saved splits are reused. A new split requires a new manifest
+path. See [OCR Preparation](../ocr/README.md) for sampling overrides.
+
+Eligible GT has normalized ASCII-alphanumeric length 1-25. With SVTRv2 enabled,
+the GT must also have length 1-25 after whitespace removal, NFKD normalization
+and ASCII conversion. Excluded-label counts are recorded in `split.json`.
+
+Under `data_root`, LMDB directories follow this layout:
+
+```text
+test/{IIIT5k,SVT,IC13_857,IC15_1811,SVTP,CUTE80}/data.mdb
+u14m/{curve,multi_oriented,artistic,contextless,salient,multi_words,general}/data.mdb
+OST/{weak,heavy}/data.mdb
+```
+
+Braces list alternative child directory names.
+
+## Historical Reference Split
+
+The published reference tables use this pre-existing manifest, not a newly
+generated seed-based split:
 
 | Dataset | Train / model | Validation / model | Test / model |
 | --- | ---: | ---: | ---: |
@@ -67,26 +100,11 @@ loaded. Strings are read with pandas `keep_default_na=False`.
 | OST_heavy | 60 | 60 | 300 |
 | Total | 614 | 794 | 4471 |
 
-Non-General train and validation allocations came from a 500-row target for
-each split, proportionally allocated with integer rounding (494 actual rows).
-General train was added separately: 80 raw errors and 40 raw-correct examples
-per model. Test is a fixed sample of up to 300 rows per dataset; it is not the
-full original benchmark. Use the existing manifest to reproduce the historical
-protocol, rather than inventing a new split from this description.
-
-## New Seed-Based Preparation
-
-`python -m pipeline prepare` samples from LMDB image IDs and labels before
-running OCR. It retains non-General proportional allocation and up-to-300
-test sampling. General train is now a uniform random 120 images, not the
-historical 80-error/40-correct recipe. All models use the same generated split.
-Unsupported labels are excluded using the recognizers' length requirements,
-not fixed image IDs. See [OCR Preparation](../ocr/README.md).
-
-The table above describes the old completed experiment, not mandatory totals
-for a new seed. Active validation checks coverage, split disjointness and
-model/image/GT alignment instead of insisting on historical row counts. New
-splits must not be reported using the old result tables.
+The historical non-General Train and Validation splits each have 494 rows
+after rounding. Historical General Train contains 80 errors and 40 raw-correct
+examples per OCR model. Its keys can therefore differ across models, whereas
+new preparation samples the same 120 images for all models. Reproducing these
+reference results requires the historical manifest.
 
 ## Limits on Leakage Claims
 
@@ -103,6 +121,5 @@ according to the authors' procedure, not from our sampled test retroactively.
 OST derives from Common benchmark imagery and should not be described as having
 no possible source-image relationship to other benchmarks.
 
-The historical test has been repeatedly observed. Report it as a historical
-benchmark, not as a previously unseen blind holdout. The source manifest and
-dataset images are excluded from Git until redistribution terms are reviewed.
+The historical test has been repeatedly observed; it is not a blind holdout.
+The source manifest and dataset images are excluded from Git.

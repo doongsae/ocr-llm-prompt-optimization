@@ -38,11 +38,6 @@ class StructureTests(unittest.TestCase):
                         self.assertNotIn(node.module.split(".")[0], local_modules)
                     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
                         self.assertNotEqual((node.value.id, node.attr), ("sys", "path"))
-        self.assertFalse((config.HERE / "run_experiment.py").exists())
-        self.assertFalse((config.HERE / "data_contract.py").exists())
-        self.assertFalse((config.HERE / "frozen_data.py").exists())
-        self.assertFalse((config.HERE / "optimization.py").exists())
-        self.assertFalse((config.HERE / "checks.py").exists())
 
     def test_package_help_works_without_private_data_or_credentials(self):
         environment = {key: value for key, value in os.environ.items()

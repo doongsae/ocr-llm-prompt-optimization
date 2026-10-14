@@ -90,7 +90,7 @@ def main():
     if bool(args.model) != bool(args.group):
         parser.error("--model and --group must be provided together")
     if args.model and args.command != "train":
-        parser.error("scope filtering is permitted only for train integration checks")
+        parser.error("--model and --group are supported only by train")
     report = preflight()
     if args.command == "preflight":
         print(json.dumps(report, indent=2))

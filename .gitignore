@@ -44,5 +44,5 @@ weights/
 PUBLICATION_CHECK.json
 .DS_Store
 
-# Historical research source is kept locally and reviewed separately.
+# Local source archive
 archive/
