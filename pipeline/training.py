@@ -84,7 +84,7 @@ def train_scope(model, group, stage):
              "started_at_utc": now(), **fingerprint()}
     write_json(output / "status.json", state)
     try:
-        train, val = load_scope_examples("group", model, group)
+        train, val = load_scope_examples(model, group)
         ratio = config.SETTINGS["bootstrap_error_ratio"] if stage == "bootstrap" else config.SETTINGS["gepa_error_ratio"]
         seed = config.SETTINGS["bootstrap_seed"] if stage == "bootstrap" else config.SETTINGS["gepa_seed"]
         biased, n_errors, n_correct, fallback = build_error_biased_trainset_safe(train, ratio, seed)

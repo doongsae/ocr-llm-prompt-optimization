@@ -22,14 +22,12 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, sys.argv[1])
 if sys.argv[2] == "package":
     from pipeline import artifacts, config, openai_lm, training
-    from pipeline.core import fresh_program
     owner = training
 else:
     import run_experiment as owner
     import config
     import openai_lm
     artifacts = owner
-    from data_contract import fresh_program
 
 import dspy
 from dspy.teleprompt import GEPA

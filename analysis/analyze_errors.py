@@ -1,4 +1,4 @@
-"""Read-only analysis of the completed Luna GEPA+Bootstrap test outputs."""
+"""Analyze GEPA+Bootstrap test outputs and verify their aggregate metrics."""
 
 import argparse
 import csv
@@ -75,11 +75,13 @@ def statistics(counter, outcomes=None, total_errors=None):
                               if counter["raw_correct"] else None),
     )
     if total_errors is not None:
-        result["raw_error_share_pct"] = 100 * counter["raw_wrong"] / total_errors
+        result["raw_error_share_pct"] = 100 * counter["raw_wrong"] / total_errors if total_errors else 0.0
     if counter["raw_wrong"]:
-        assert abs(sum(result[key] for key in
-                       ["error_fix_rate_pct", "wrong_unchanged_literal_rate_pct",
-                        "wrong_changed_literal_rate_pct"]) - 100) < 1e-8
+        rates = sum(result[key] for key in
+                    ["error_fix_rate_pct", "wrong_unchanged_literal_rate_pct",
+                     "wrong_changed_literal_rate_pct"])
+        if abs(rates - 100) >= 1e-8:
+            raise ValueError("raw-error categories do not sum to 100 percent")
     if outcomes is not None:
         result.update(wins=sum(value > 0 for value in outcomes),
                       ties=sum(value == 0 for value in outcomes),
@@ -100,12 +102,17 @@ def main():
     with path.open(newline="", encoding="utf-8") as handle:
         predictions = list(csv.DictReader(handle))
     with (source / "main_table.csv").open(newline="", encoding="utf-8") as handle:
-        cells = {(row["model"], row["dataset"]): row
-                 for row in csv.DictReader(handle) if row["method"] == "bootstrap"}
+        cell_rows = [row for row in csv.DictReader(handle) if row["method"] == "bootstrap"]
+    cells = {(row["model"], row["dataset"]): row for row in cell_rows}
+    expected_cells = {(model, dataset) for model in MODELS for dataset in DATASETS}
+    if len(cells) != len(cell_rows) or set(cells) != expected_cells:
+        raise ValueError("Bootstrap main table has duplicate or missing model/dataset cells")
     summary = json.loads((source / "summary.json").read_text())["methods"]["bootstrap"]
-    assert len(predictions) == 26826 and len(cells) == 90
-    assert len({(row["model"], row["dataset"], row["image_idx"])
-                for row in predictions}) == len(predictions)
+    if {(row["model"], row["dataset"]) for row in predictions} != expected_cells:
+        raise ValueError("Bootstrap predictions have incomplete model/dataset coverage")
+    if len({(row["model"], row["dataset"], row["image_idx"])
+            for row in predictions}) != len(predictions):
+        raise ValueError("duplicate Bootstrap prediction keys")
 
     totals = Counter()
     grouped = defaultdict(Counter)
@@ -118,8 +125,8 @@ def main():
         original_correct = int(row["baseline_correct"])
         candidate_correct = int(row["candidate_correct"])
         valid = valid_output(row["llm_corrected"], row["ocr_pred"])
-        assert original_correct == int(raw == gt)
-        assert candidate_correct == int(valid and output == gt)
+        if original_correct != int(raw == gt) or candidate_correct != int(valid and output == gt):
+            raise ValueError(f"stale correctness: {row['model']}/{row['dataset']}/{row['image_idx']}")
         if original_correct and candidate_correct:
             category = "correct_preserved"
         elif candidate_correct:
@@ -157,18 +164,23 @@ def main():
         for actual, field in [("rows", "rows"), ("raw_correct", "baseline_correct"),
                               ("ours_correct", "candidate_correct"),
                               ("error_fixed", "fixes"), ("correct_harmed", "harms")]:
-            assert counter[actual] == int(expected[field]), (key, actual)
-        assert sum(counter[name] for name in CATEGORIES) == counter["rows"]
+            if counter[actual] != int(expected[field]):
+                raise ValueError(f"cell metrics disagree with predictions: {key}/{field}")
+        if sum(counter[name] for name in CATEGORIES) != counter["rows"]:
+            raise ValueError(f"outcome categories do not cover every row: {key}")
     for actual, field in [("rows", "rows"), ("raw_correct", "baseline_correct"),
                           ("ours_correct", "candidate_correct"),
                           ("error_fixed", "fixes"), ("correct_harmed", "harms")]:
-        assert totals[actual] == summary[field]
+        if totals[actual] != summary[field]:
+            raise ValueError(f"summary disagrees with predictions: {field}")
 
     delta = {key: counter["error_fixed"] - counter["correct_harmed"]
              for key, counter in cell_counts.items()}
     total_errors = totals["raw_wrong"]
     overall = statistics(totals, list(delta.values()), total_errors)
-    assert (overall["wins"], overall["ties"], overall["losses"]) == (62, 6, 22)
+    for field in ("wins", "ties", "losses"):
+        if overall[field] != summary[field]:
+            raise ValueError(f"summary disagrees with cell outcomes: {field}")
     dataset_rows = [{"dataset": dataset, **statistics(dataset_counts[dataset],
                      [delta[model, dataset] for model in MODELS], total_errors)}
                     for dataset in DATASETS]
@@ -188,14 +200,14 @@ def main():
         write_csv(output_dir / f"{name}.csv", rows)
     result = {
         "source": str(path), "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        "method": "Luna EM-only GEPA+Bootstrap", "test_split_modified": False,
+        "method": "GEPA+Bootstrap", "test_split_modified": False,
         "fresh_inference_calls": 0, "verified_against_cell_metrics_and_summary": True,
         "correctness": "lowercase ASCII alphanumeric exact match with existing output validity check",
         "literal_unchanged": "the original OCR string exactly equals the output string",
         "normalized_unchanged": "the normalized OCR string equals the normalized output string",
         "rate_denominators": {
             "raw_error_rate_pct": "rows in the given slice",
-            "raw_error_share_pct": "4335 raw OCR errors across the complete sampled test",
+            "raw_error_share_pct": "raw OCR errors across the complete supplied test",
             "error_fix_rate_pct": "raw OCR errors in the given slice",
             "wrong_unchanged_literal_rate_pct": "raw OCR errors in the given slice",
             "wrong_changed_literal_rate_pct": "raw OCR errors in the given slice",

@@ -182,7 +182,7 @@ def prepare_split(args):
               "train_target_non_general": args.train_target, "val_target_non_general": args.val_target,
               "test_per_dataset": args.test_per_dataset, "general_train": args.general_train,
               "general_val": args.general_val, "max_text_length": args.max_text_length,
-              "general_correctness_quota": None, "source_counts": counts,
+              "source_counts": counts,
               "joint_svtr_label_filter": "svtrv2" in args.models,
               "selected_images": len(rows), "selection_sha256": file_hash(selection),
               "split_counts": dict(Counter(row["split"] for row in rows)),

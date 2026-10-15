@@ -42,7 +42,7 @@ def audit_data():
     scopes = []
     for model in MODELS:
         for group in GROUPS:
-            train, val = data.load_scope_examples("group", model, group)
+            train, val = data.load_scope_examples(model, group)
             if any(set(ex.inputs()) != {"ocr_prediction"} for ex in train + val):
                 raise ValueError("metadata became an input field")
             scopes.append({"model": model, "group": group,

@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_DIRS = {".git", ".venv", "venv", "__pycache__", ".cache", ".pytest_cache",
                  "data", "datasets", "weights", "checkpoints", "artifacts", "status",
-                 "manifests", "results", "logs"}
+                 "manifests", "results", "logs", "archive"}
 FORBIDDEN_SUFFIXES = {".key", ".pem", ".p12", ".pt", ".pth", ".ckpt", ".safetensors",
                       ".bin", ".mdb", ".lmdb", ".zip", ".pdf", ".log"}
 SECRET = re.compile(r"(?<![A-Za-z0-9_-])(?:sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[A-Z0-9]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)")
@@ -60,13 +60,13 @@ def inspect(name, content):
         failures.append("potential credential detected; value suppressed")
     if name == "config.example.json" and json.loads(text).get("openai_api_key") != "":
         failures.append("example config must contain an empty API key")
-    if path.suffix == ".py" and path.parts[0] != "archive":
+    if path.suffix == ".py":
         try:
             ast.parse(text, filename=name)
         except SyntaxError as exc:
             failures.append(f"syntax error at line {exc.lineno}")
-    if path.parts[0] != "archive" and MACHINE_PATH.search(text):
-        failures.append("machine-specific source path outside archive")
+    if MACHINE_PATH.search(text):
+        failures.append("machine-specific source path")
     return failures
 
 

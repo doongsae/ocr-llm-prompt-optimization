@@ -57,30 +57,20 @@ def load_data_manifest() -> pd.DataFrame:
     return _cached_data_manifest().copy()
 
 
-def load_scope_frames(
-    scope: str, model: str, name: str
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_scope_frames(model: str, group: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     if model not in MODELS:
         raise ValueError(f"unknown model: {model}")
-    if scope == "group":
-        if name not in GROUPS:
-            raise ValueError(f"unknown group: {name}")
-        datasets = GROUPS[name]
-    elif scope == "cell":
-        if name not in DATASETS:
-            raise ValueError(f"unknown dataset: {name}")
-        datasets = [name]
-    else:
-        raise ValueError(f"unknown scope: {scope}")
+    if group not in GROUPS:
+        raise ValueError(f"unknown group: {group}")
 
     frame = _cached_data_manifest()
     selected = frame[
-        (frame["model"] == model) & frame["dataset"].isin(datasets)
+        (frame["model"] == model) & frame["dataset"].isin(GROUPS[group])
     ]
     train = selected[selected["split"] == "train"].drop(columns="split").copy()
     val = selected[selected["split"] == "val"].drop(columns="split").copy()
     if train.empty or val.empty:
-        raise RuntimeError(f"empty scope data: {scope}/{model}/{name}")
+        raise RuntimeError(f"empty scope data: {model}/{group}")
     return train.reset_index(drop=True), val.reset_index(drop=True)
 
 
@@ -110,10 +100,8 @@ def frame_to_examples(frame: pd.DataFrame) -> list[dspy.Example]:
     return examples
 
 
-def load_scope_examples(
-    scope: str, model: str, name: str
-) -> tuple[list[dspy.Example], list[dspy.Example]]:
-    train, val = load_scope_frames(scope, model, name)
+def load_scope_examples(model: str, group: str) -> tuple[list[dspy.Example], list[dspy.Example]]:
+    train, val = load_scope_frames(model, group)
     return frame_to_examples(train), frame_to_examples(val)
 
 

@@ -13,7 +13,6 @@ PROBE = r'''
 import hashlib
 import json
 import sys
-from pathlib import Path
 
 sys.path.insert(0, sys.argv[1])
 import dspy
@@ -41,7 +40,10 @@ program = fresh_program()
 scopes = []
 for model in frozen.MODELS:
     for group in frozen.GROUPS:
-        train, val = frozen.load_scope_examples("group", model, group)
+        if sys.argv[2] == "package":
+            train, val = frozen.load_scope_examples(model, group)
+        else:
+            train, val = frozen.load_scope_examples("group", model, group)
         choices = {}
         for stage in ("gepa", "bootstrap"):
             biased, errors, corrects, fallback = build_error_biased_trainset_safe(

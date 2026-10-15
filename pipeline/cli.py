@@ -29,7 +29,7 @@ def preflight():
               "data": audit_data(), "provenance": fingerprint(),
               "api_key_present": bool(config.openai_api_key()),
               "api_request_performed": False,
-              "runtime_contract": verify_program(fresh_program(), load_scope_examples("group", "trba", "common")[0])}
+              "runtime_contract": verify_program(fresh_program(), load_scope_examples("trba", "common")[0])}
     write_json(config.HERE / "status" / "preflight.json", report)
     return report
 

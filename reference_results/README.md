@@ -14,4 +14,5 @@ divide by all 4,335 raw errors. The unchanged/changed distinction is literal
 string equality, with separate normalized-equality columns provided.
 
 These results use the [historical split](../docs/DATA_PROTOCOL.md#historical-reference-split).
-`analysis/analyze_errors.py` validates that experiment's row and outcome counts.
+`analysis/analyze_errors.py` analyzes supplied Test outputs and checks them
+against their cell metrics and summary, without requiring these historical counts.

@@ -5,12 +5,9 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from pipeline import config
-
-HERE = config.HERE
 
 import dspy
 from dspy.teleprompt import GEPA
@@ -320,11 +317,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual((report["wins"], report["ties"], report["losses"]), (0, 1, 0))
 
     def test_resume_preserves_metadata_and_rejects_stale_fingerprints_or_programs(self):
-        source_path = str((HERE / "reflection.py").relative_to(config.ROOT))
-        student_path = str((HERE / "openai_lm.py").relative_to(config.ROOT))
-        source = {"settings": SETTINGS, "data_sha256": "data", "experiment_sha256": "old",
-                  "sources": {source_path: "old-code", student_path: "unchanged"}}
-        target = {**source, "experiment_sha256": "new", "sources": {**source["sources"], source_path: "new-code"}}
+        target = {"experiment_sha256": "new"}
         with tempfile.TemporaryDirectory() as directory, patch.object(config, "HERE", Path(directory)), \
                 patch.object(artifacts, "fingerprint", return_value=target):
             output = artifacts.job_dir("trba", "common", "base")
@@ -339,16 +332,11 @@ class ContractTests(unittest.TestCase):
             stale = {**metadata, "experiment_sha256": "old"}
             storage.write_json(output / "metadata.json", stale)
             stale_bytes = (output / "metadata.json").read_bytes()
-            plan = {"source_provenance": source, "target_provenance": target,
-                    "completed_jobs": [{**stale, "source_experiment_sha256": "old",
-                                        "metadata_sha256": storage.sha256_path(output / "metadata.json")}]}
-            storage.write_json(config.HERE / "status/resume_plan.json", plan)
             with self.assertRaises(ValueError):
                 artifacts.verify_job("trba", "common", "base")
             self.assertEqual((output / "metadata.json").read_bytes(), stale_bytes)
             storage.write_json(output / "metadata.json", metadata)
-            bad = {**target, "sources": {**target["sources"], student_path: "changed-transport"}}
-            bad["experiment_sha256"] = "changed-transport"
+            bad = {"experiment_sha256": "changed-transport"}
             with patch.object(artifacts, "fingerprint", return_value=bad), self.assertRaises(ValueError):
                 artifacts.verify_job("trba", "common", "base")
             (output / "program.json").write_text((output / "program.json").read_text() + " ")

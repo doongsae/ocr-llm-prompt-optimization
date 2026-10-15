@@ -1,10 +1,10 @@
 # Validation
 
-Validated on 2026-10-14 with Python 3.10.
+Code checks: 2026-10-15. GPU and live API checks: 2026-10-14. Python 3.10.
 
 | Check | Result |
 | --- | --- |
-| Unit suite with the historical manifest | 91 tests passed |
+| Unit suite with the historical manifest | 95 tests passed |
 | Historical data and prompt contracts | Matched for 35,274 rows and 24 scopes |
 | Mocked native optimizer workflow | Matching requests, selected programs, validation outputs and usage |
 | CPU and CUDA OCR integration | Six checkpoints, 15 datasets, 117 images per model; all 702 prediction rows matched |
@@ -14,6 +14,7 @@ Validated on 2026-10-14 with Python 3.10.
 | Cache reuse | Completed OCR results and assets reused without inference or download |
 | Prepared-data preflight | 24 scopes and 90 Test cells passed |
 | Historical error analysis | Aggregate CSVs matched the reference copies |
+| Error analysis on new counts | Accepted new outcomes and zero-error inputs; rejected inconsistent inputs under Python `-O` |
 
 The OCR integration used 36 Train, 36 Validation and 45 Test images per model.
 The CUDA run used an NVIDIA A100 80GB at batch size 1 and took 29.05 backend
